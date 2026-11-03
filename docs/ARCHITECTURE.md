@@ -98,12 +98,20 @@ Service worker caching is deliberately absent — stale dashboards are worse tha
 
 ## Database architecture
 
-Three migrations, applied in order:
+Four migrations, applied in order:
 
 1. `…000000_schema.sql` — enums, thirteen tables, indexes, constraints, `updated_at` triggers, and the
    `auth.users → profiles` trigger.
 2. `…000100_functions.sql` — `is_member`, `has_role`, `my_role`, the three RPCs, and the three reporting views.
 3. `…000200_rls.sql` — RLS enablement, policies, grants and revokes.
+4. `…020000_advanced.sql` — `audit_snapshots`, `posts`, `import_jobs`, the `v_score_trend` view, and the same
+   org-scoped RLS pattern applied to each.
+
+### Live project
+
+`kendra` on Supabase (`eboeegapwtouwnrogpbi`, ap-south-1, free tier), four migrations applied, seeded with a
+10-outlet workspace. The browser holds only the anon key; both that key and the project URL are build-time
+environment variables supplied to the Pages workflow as repository secrets.
 
 Design decisions worth naming:
 
