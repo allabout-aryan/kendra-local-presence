@@ -1,0 +1,10 @@
+# Kendra is a static export (Next.js `output: 'export'`), so Netlify needs no
+# Next.js runtime plugin — the output directory is plain files.
+[build]
+  command = "pnpm install --frozen-lockfile && pnpm build"
+  publish = "out"
+  framework = "#custom"
+
+[build.environment]
+  NODE_VERSION = "20"
+  NETLIFY_NEXT_PLUGIN_SKIP = "true"
