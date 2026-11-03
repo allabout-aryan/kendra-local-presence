@@ -1,5 +1,9 @@
 # Kendra
 
+[![Deploy to GitHub Pages](https://github.com/allabout-aryan/kendra-local-presence/actions/workflows/deploy-pages.yml/badge.svg)](https://github.com/allabout-aryan/kendra-local-presence/actions/workflows/deploy-pages.yml) [![Live demo](https://img.shields.io/badge/live_demo-open-0E5B46)](https://allabout-aryan.github.io/kendra-local-presence/)
+
+**[Open the live demo →](https://allabout-aryan.github.io/kendra-local-presence/)**
+
 **A local presence manager for multi-location brands.** Kendra keeps every outlet of a brand accurate,
 reviewed and ranking on Google — from one screen.
 
