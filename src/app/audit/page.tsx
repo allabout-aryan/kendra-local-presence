@@ -5,6 +5,7 @@ import { Download, ShieldCheck } from 'lucide-react';
 import { AppShell, PageGuard } from '@/components/shell/AppShell';
 import { Badge, Button, Card, CardHeader, EmptyState, Progress, Select } from '@/components/ui/primitives';
 import { useAuditResults, useStore } from '@/lib/data/store';
+import { ScoreTrend } from '@/components/ui/charts';
 import { AUDIT_RULES, portfolioFixRanking, scoreBand } from '@/lib/domain/audit';
 import { csvFilename, downloadCsv, toCsv } from '@/lib/domain/csv';
 import { formatRelative } from '@/lib/domain/format';
@@ -16,6 +17,19 @@ function AuditInner() {
   const audits = useAuditResults();
   const { push } = useToast();
   const [severity, setSeverity] = React.useState('all');
+
+  const scoreTrend = React.useMemo(() => {
+    const byDate = new Map<string, { total: number; count: number }>();
+    for (const snapshot of data.auditSnapshots) {
+      const entry = byDate.get(snapshot.captured_on) ?? { total: 0, count: 0 };
+      entry.total += snapshot.score;
+      entry.count += 1;
+      byDate.set(snapshot.captured_on, entry);
+    }
+    return [...byDate.entries()]
+      .map(([captured_on, entry]) => ({ captured_on, avg_score: Math.round((entry.total / entry.count) * 10) / 10 }))
+      .sort((a, b) => a.captured_on.localeCompare(b.captured_on));
+  }, [data.auditSnapshots]);
 
   const scores = audits.map((entry) => entry.result.score);
   const portfolioScore = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
@@ -80,6 +94,13 @@ function AuditInner() {
                   <p className="text-[10px] text-ink-400">{item.label}</p>
                 </div>
               ))}
+            </div>
+          </Card>
+
+          <Card>
+            <CardHeader title="Score history" description="Portfolio average by day" />
+            <div className="px-1 pb-1 pt-2">
+              <ScoreTrend points={scoreTrend} height={110} />
             </div>
           </Card>
 

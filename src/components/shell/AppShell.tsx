@@ -5,10 +5,10 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   Activity, Building2, ChevronsUpDown, ClipboardList, FileBarChart, LayoutDashboard,
-  LogOut, Menu, MessageSquareText, Plus, RefreshCw, Search, Settings, ShieldCheck, Users, X,
+  LogOut, Menu, MessageSquareText, Newspaper, Plus, RefreshCw, Search, Settings, ShieldCheck, Users, X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useStore } from '@/lib/data/store';
+import { useAuditResults, useStore } from '@/lib/data/store';
 import { Avatar, Badge, Button, Kbd, Spinner } from '@/components/ui/primitives';
 import { Menu as DropMenu, MenuItem, useToast } from '@/components/ui/overlay';
 import { roleLabel } from '@/lib/domain/permissions';
@@ -20,6 +20,7 @@ const NAV = [
       { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
       { href: '/locations', label: 'Outlets', icon: Building2 },
       { href: '/reviews', label: 'Reviews', icon: MessageSquareText },
+      { href: '/posts', label: 'Posts', icon: Newspaper },
       { href: '/bulk', label: 'Bulk edit', icon: ClipboardList },
     ],
   },
@@ -118,7 +119,27 @@ export function AppShell({ title, subtitle, actions, children }: {
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { org, orgs, role, user, mode, signOut, switchOrg, syncNow } = useStore();
+  const { org, orgs, role, user, mode, signOut, switchOrg, syncNow, syncAuditSnapshots } = useStore();
+  const audits = useAuditResults();
+  const syncedFor = React.useRef<string | null>(null);
+
+  // Persist today's audit score per outlet once per workspace visit so the
+  // portfolio has a real score history rather than a single number.
+  React.useEffect(() => {
+    if (mode !== 'supabase' || !org || audits.length === 0) return;
+    const key = `${org.id}:${new Date().toISOString().slice(0, 10)}`;
+    if (syncedFor.current === key) return;
+    syncedFor.current = key;
+    void syncAuditSnapshots(
+      audits.map(({ location, result }) => ({
+        location_id: location.id,
+        score: result.score,
+        findings: result.findings.length,
+      })),
+    ).catch(() => {
+      // a failed snapshot must never break the workspace
+    });
+  }, [mode, org, audits, syncAuditSnapshots]);
   const { push } = useToast();
   const [mobileOpen, setMobileOpen] = React.useState(false);
   const [paletteOpen, setPaletteOpen] = React.useState(false);

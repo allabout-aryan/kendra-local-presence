@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { cn } from '@/lib/utils';
+import { Star } from 'lucide-react';
 import { areaPath, sparklinePath } from '@/lib/domain/kpis';
 
 export function Sparkline({
@@ -218,5 +219,254 @@ export function RankGrid({ cells }: { cells: { row: number; col: number; positio
         );
       })}
     </div>
+  );
+}
+
+/* ------------------------------------------------------------ heatmap */
+
+const HEAT_COLOURS = ['#EFEFF2', '#DCEFE8', '#A8D5C6', '#4E9C82', '#0E5B46'];
+const DAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+
+export function DiscoveryHeatmap({
+  weeks,
+  levels,
+  metricLabel = 'views',
+}: {
+  weeks: (import('@/lib/domain/heatmap').HeatCell | null)[][];
+  levels: number[];
+  metricLabel?: string;
+}) {
+  const months = React.useMemo(() => {
+    const seen: { index: number; label: string }[] = [];
+    weeks.forEach((week, index) => {
+      const first = week.find((cell) => cell !== null);
+      if (!first) return;
+      const month = new Date(`${first.date}T00:00:00Z`).toLocaleDateString('en-IN', { month: 'short' });
+      if (!seen.some((entry) => entry.label === month)) seen.push({ index, label: month });
+    });
+    return seen;
+  }, [weeks]);
+
+  return (
+    <div className="overflow-x-auto">
+      <div className="inline-flex gap-[3px]">
+        <div className="mr-1 flex flex-col gap-[3px] pt-[15px]">
+          {DAY_LABELS.map((label, index) => (
+            <span key={`${label}-${index}`} className="h-[11px] w-2 text-[9px] leading-[11px] text-ink-400">
+              {index % 2 === 0 ? label : ''}
+            </span>
+          ))}
+        </div>
+        <div>
+          <div className="mb-1 flex gap-[3px]">
+            {weeks.map((_, index) => {
+              const month = months.find((entry) => entry.index === index);
+              return (
+                <span key={index} className="w-[11px] text-[9px] leading-none text-ink-400">
+                  {month ? month.label : ''}
+                </span>
+              );
+            })}
+          </div>
+          <div className="flex gap-[3px]">
+            {weeks.map((week, weekIndex) => (
+              <div key={weekIndex} className="flex flex-col gap-[3px]">
+                {week.map((cell, dayIndex) =>
+                  cell ? (
+                    <div
+                      key={cell.date}
+                      className="h-[11px] w-[11px] rounded-[2px] transition-transform hover:scale-125"
+                      style={{ backgroundColor: HEAT_COLOURS[cell.level] }}
+                      title={`${cell.date}: ${cell.value.toLocaleString('en-IN')} ${metricLabel}`}
+                    />
+                  ) : (
+                    <div key={`empty-${weekIndex}-${dayIndex}`} className="h-[11px] w-[11px]" />
+                  ),
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+      <div className="mt-2 flex items-center gap-1.5 text-[10px] text-ink-400">
+        <span>Less</span>
+        {HEAT_COLOURS.map((colour) => (
+          <span key={colour} className="h-[9px] w-[9px] rounded-[2px]" style={{ backgroundColor: colour }} />
+        ))}
+        <span>More</span>
+        <span className="ml-2">quartile thresholds {levels.map((level) => Math.round(level)).join(' / ')}</span>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------- comparison chart */
+
+export function ComparisonChart({
+  current,
+  previous,
+  dates,
+  colour = '#0E5B46',
+  label = 'This period',
+  previousLabel = 'Previous period',
+  valueFormatter = (value: number) => String(value),
+  height = 160,
+}: {
+  current: number[];
+  previous: number[];
+  dates: string[];
+  colour?: string;
+  label?: string;
+  previousLabel?: string;
+  valueFormatter?: (value: number) => string;
+  height?: number;
+}) {
+  const width = 720;
+  const padding = { top: 10, right: 8, bottom: 20, left: 38 };
+  const innerW = width - padding.left - padding.right;
+  const innerH = height - padding.top - padding.bottom;
+  const max = Math.max(1, ...current, ...previous);
+  const [hover, setHover] = React.useState<number | null>(null);
+
+  const x = (index: number, length: number) => padding.left + (length <= 1 ? innerW / 2 : (index / (length - 1)) * innerW);
+  const y = (value: number) => padding.top + innerH - (value / max) * innerH;
+
+  const line = (values: number[]) =>
+    values
+      .map((value, index) => `${index === 0 ? 'M' : 'L'}${x(index, values.length).toFixed(1)},${y(value).toFixed(1)}`)
+      .join(' ');
+
+  return (
+    <div>
+      <svg viewBox={`0 0 ${width} ${height}`} className="w-full" style={{ height }} role="img" aria-label={`${label} versus ${previousLabel}`} onMouseLeave={() => setHover(null)}>
+        {[0, 0.5, 1].map((fraction) => {
+          const value = Math.round(max * fraction);
+          return (
+            <g key={fraction}>
+              <line x1={padding.left} x2={width - padding.right} y1={y(value)} y2={y(value)} stroke="#EFEFF2" />
+              <text x={padding.left - 6} y={y(value) + 3} textAnchor="end" className="fill-ink-400 text-[9px]">
+                {valueFormatter(value)}
+              </text>
+            </g>
+          );
+        })}
+
+        <path d={line(previous)} fill="none" stroke="#C7C7CF" strokeWidth={1.5} strokeDasharray="4 3" strokeLinecap="round" />
+        <path d={line(current)} fill="none" stroke={colour} strokeWidth={1.9} strokeLinejoin="round" strokeLinecap="round" />
+
+        {current.map((_, index) => (
+          <rect
+            key={index}
+            x={x(index, current.length) - innerW / (current.length * 2)}
+            y={padding.top}
+            width={Math.max(2, innerW / current.length)}
+            height={innerH}
+            fill="transparent"
+            onMouseEnter={() => setHover(index)}
+          />
+        ))}
+
+        {hover !== null && (
+          <g>
+            <line x1={x(hover, current.length)} x2={x(hover, current.length)} y1={padding.top} y2={padding.top + innerH} stroke="#C7C7CF" strokeDasharray="3 3" />
+            <circle cx={x(hover, current.length)} cy={y(current[hover] ?? 0)} r={2.6} fill={colour} />
+            <circle cx={x(hover, current.length)} cy={y(previous[hover] ?? 0)} r={2.2} fill="#C7C7CF" />
+          </g>
+        )}
+
+        {dates.map((date, index) =>
+          index % Math.ceil(dates.length / 5) === 0 ? (
+            <text key={date} x={x(index, dates.length)} y={height - 5} textAnchor="middle" className="fill-ink-400 text-[9px]">
+              {new Date(date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
+            </text>
+          ) : null,
+        )}
+      </svg>
+      <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-ink-500">
+        <span className="flex items-center gap-1.5">
+          <span className="h-[2px] w-4 rounded" style={{ backgroundColor: colour }} />
+          {label}
+          {hover !== null && <span className="tabular font-medium text-ink-900">{valueFormatter(current[hover] ?? 0)}</span>}
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-[2px] w-4 rounded border-t border-dashed border-ink-300" />
+          {previousLabel}
+          {hover !== null && <span className="tabular font-medium text-ink-600">{valueFormatter(previous[hover] ?? 0)}</span>}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------- rating bars */
+
+export function RatingBars({ counts }: { counts: Record<number, number> }) {
+  const total = Object.values(counts).reduce((sum, value) => sum + value, 0) || 1;
+  return (
+    <div className="space-y-1.5">
+      {[5, 4, 3, 2, 1].map((rating) => {
+        const value = counts[rating] ?? 0;
+        const width = (value / total) * 100;
+        return (
+          <div key={rating} className="flex items-center gap-2">
+            <span className="tabular w-3 text-[11px] text-ink-500">{rating}</span>
+            <Star className="h-2.5 w-2.5 fill-amber-600 text-amber-600" aria-hidden />
+            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-ink-100">
+              <div
+                className={cn('h-full rounded-full', rating >= 4 ? 'bg-pine-600' : rating === 3 ? 'bg-amber-600' : 'bg-brick-600')}
+                style={{ width: `${width}%` }}
+              />
+            </div>
+            <span className="tabular w-6 text-right text-[11px] text-ink-600">{value}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------- score trend */
+
+export function ScoreTrend({ points, height = 120 }: { points: { captured_on: string; avg_score: number }[]; height?: number }) {
+  if (points.length < 2) {
+    return <p className="px-1 py-6 text-center text-[11px] text-ink-400">Score history builds up as the portfolio is audited.</p>;
+  }
+  const width = 640;
+  const padding = { top: 8, right: 6, bottom: 16, left: 26 };
+  const innerW = width - padding.left - padding.right;
+  const innerH = height - padding.top - padding.bottom;
+  const values = points.map((point) => point.avg_score);
+  const min = Math.min(...values, 60);
+  const max = Math.max(...values, 90);
+  const span = max - min || 1;
+
+  const x = (index: number) => padding.left + (index / (points.length - 1)) * innerW;
+  const y = (value: number) => padding.top + innerH - ((value - min) / span) * innerH;
+  const line = points.map((point, index) => `${index === 0 ? 'M' : 'L'}${x(index).toFixed(1)},${y(point.avg_score).toFixed(1)}`).join(' ');
+
+  return (
+    <svg viewBox={`0 0 ${width} ${height}`} className="w-full" style={{ height }} role="img" aria-label="Portfolio audit score trend">
+      <defs>
+        <linearGradient id="scoreFade" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#0E5B46" stopOpacity="0.18" />
+          <stop offset="100%" stopColor="#0E5B46" stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <path d={`${line} L${x(points.length - 1)},${padding.top + innerH} L${padding.left},${padding.top + innerH} Z`} fill="url(#scoreFade)" />
+      <path d={line} fill="none" stroke="#0E5B46" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx={x(points.length - 1)} cy={y(points[points.length - 1].avg_score)} r={3} fill="#0E5B46" />
+      <text x={padding.left} y={height - 3} className="fill-ink-400 text-[9px]">
+        {new Date(`${points[0].captured_on}T00:00:00Z`).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
+      </text>
+      <text x={width - padding.right} y={height - 3} textAnchor="end" className="fill-ink-400 text-[9px]">
+        today
+      </text>
+      <text x={padding.left - 4} y={y(max) + 3} textAnchor="end" className="fill-ink-400 text-[9px]">
+        {Math.round(max)}
+      </text>
+      <text x={padding.left - 4} y={y(min) + 3} textAnchor="end" className="fill-ink-400 text-[9px]">
+        {Math.round(min)}
+      </text>
+    </svg>
   );
 }

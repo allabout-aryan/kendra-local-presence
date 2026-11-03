@@ -167,6 +167,44 @@ export default function LoginPage() {
             )}
           </form>
 
+          {supabaseReady && (
+            <div className="mt-4 rounded-lg border border-pine-100 bg-pine-50 p-3">
+              <p className="text-[12px] font-medium text-pine-700">Seeded demo account</p>
+              <p className="mt-0.5 font-mono text-[11px] text-pine-700">aarti@bluetokai.test · kendra-demo-1234</p>
+              <Button
+                size="sm"
+                variant="secondary"
+                className="mt-2"
+                onClick={() => {
+                  setTab('signin');
+                  setEmail('aarti@bluetokai.test');
+                  setPassword('kendra-demo-1234');
+                }}
+              >
+                Fill these in
+              </Button>
+            </div>
+          )}
+
+          {supabaseReady && (
+            <div className="mt-4 rounded-lg border border-pine-100 bg-pine-50 p-3">
+              <p className="text-[12px] font-medium text-pine-700">Seeded demo account</p>
+              <p className="mt-0.5 font-mono text-[11px] text-pine-700">aarti@bluetokai.test · kendra-demo-1234</p>
+              <Button
+                size="sm"
+                variant="secondary"
+                className="mt-2"
+                onClick={() => {
+                  setTab('signin');
+                  setEmail('aarti@bluetokai.test');
+                  setPassword('kendra-demo-1234');
+                }}
+              >
+                Fill these in
+              </Button>
+            </div>
+          )}
+
           <div className="mt-5 flex items-center gap-3">
             <div className="h-px flex-1 bg-ink-200" />
             <span className="text-[10px] uppercase tracking-wide text-ink-400">or</span>

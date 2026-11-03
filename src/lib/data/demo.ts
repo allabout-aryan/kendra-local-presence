@@ -1,6 +1,6 @@
 import type {
-  ActivityEvent, AuditFinding, BulkJob, Connection, Location, Membership, MetricSnapshot,
-  Organization, RankSnapshot, Review,
+  ActivityEvent, AuditFinding, AuditSnapshot, BulkJob, Connection, ImportJob, Location, Membership,
+  MetricSnapshot, Organization, Post, RankSnapshot, Review,
 } from '@/lib/domain/types';
 import { classifySentiment } from '@/lib/domain/reviews';
 import { evaluateAudit } from '@/lib/domain/audit';
@@ -81,6 +81,24 @@ const AUTHORS = ['Kavya Nair', 'Rohan Mehta', 'Priya Iyer', 'Aditya Rao', 'Sneha
 
 const KEYWORDS = ['coffee near me', 'best cafe indiranagar', 'specialty coffee', 'brunch place', 'work friendly cafe'];
 
+/** 30 days of score history per outlet, drifting a little each day. */
+function buildAuditHistory(locations: Location[], iso: (daysAgo: number) => string): AuditSnapshot[] {
+  const rows: AuditSnapshot[] = [];
+  locations.forEach((location, locationIndex) => {
+    for (let day = 29; day >= 0; day -= 1) {
+      const drift = Math.round(Math.sin((day + locationIndex) / 3.2) * 4) + Math.floor((29 - day) / 12);
+      rows.push({
+        id: `hist-${locationIndex}-${day}`,
+        org_id: location.org_id,
+        location_id: location.id,
+        captured_on: iso(day).slice(0, 10),
+        score: Math.max(0, Math.min(100, location.audit_score + drift)),
+      });
+    }
+  });
+  return rows;
+}
+
 export interface DemoDataset {
   org: Organization;
   role: 'owner';
@@ -93,6 +111,9 @@ export interface DemoDataset {
   activity: ActivityEvent[];
   members: Membership[];
   connection: Connection;
+  posts: Post[];
+  auditSnapshots: AuditSnapshot[];
+  importJobs: ImportJob[];
 }
 
 export function buildDemoDataset(now = new Date()): DemoDataset {
@@ -311,6 +332,41 @@ export function buildDemoDataset(now = new Date()): DemoDataset {
       },
     ],
     activity,
+    posts: [
+      {
+        id: 'p1', org_id: ORG_ID, location_id: locations[0].id,
+        body: 'New season, new beans: the Ratnagiri washed lot is on the bar from Friday. Come taste it before it sells out.',
+        cta_type: 'learn_more', cta_url: 'https://bluetokai.com/lots',
+        scheduled_for: iso(-2), status: 'published', published_at: iso(-2), error: null,
+        created_at: iso(4), updated_at: iso(2), location_name: locations[0].name,
+      },
+      {
+        id: 'p2', org_id: ORG_ID, location_id: locations[6].id,
+        body: 'Sunday cupping at Jubilee Hills, 11am. Six beans, no charge, bring a friend.',
+        cta_type: 'call', cta_url: null,
+        scheduled_for: iso(-1), status: 'scheduled', published_at: null, error: null,
+        created_at: iso(1), updated_at: iso(1), location_name: locations[6].name,
+      },
+      {
+        id: 'p3', org_id: ORG_ID, location_id: locations[3].id,
+        body: 'Lower Parel is open again after the refit — bigger bar, more seats, same flat white.',
+        cta_type: 'none', cta_url: null,
+        scheduled_for: null, status: 'draft', published_at: null, error: null,
+        created_at: iso(0), updated_at: iso(0), location_name: locations[3].name,
+      },
+    ],
+    auditSnapshots: buildAuditHistory(locations, iso),
+    importJobs: [
+      {
+        id: 'i1', org_id: ORG_ID, filename: 'outlets-q3.csv', status: 'completed',
+        total_rows: 12, imported: 10, failed: 2,
+        errors: [
+          { row: 4, field: 'postal_code', message: 'Indian PIN codes are 6 digits' },
+          { row: 9, field: 'phone', message: 'Enter a 10-digit Indian mobile number' },
+        ],
+        created_at: iso(11), finished_at: iso(11),
+      },
+    ],
     members: [
       { org_id: ORG_ID, user_id: 'u1', role: 'owner', created_at: iso(400), profile: { full_name: 'Aarti Rao', email: 'aarti@bluetokai.test' } },
       { org_id: ORG_ID, user_id: 'u2', role: 'admin', created_at: iso(320), profile: { full_name: 'Mihir Shah', email: 'mihir@bluetokai.test' } },

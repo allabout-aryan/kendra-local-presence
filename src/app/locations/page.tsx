@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import {
-  Building2, Download, ExternalLink, Filter, MapPin, Pencil, Plus, Search, Star, Trash2, X,
+  Building2, Download, ExternalLink, Pencil, Plus, Save, Search, Star, Trash2, Upload, X,
 } from 'lucide-react';
 import { AppShell, PageGuard } from '@/components/shell/AppShell';
 import {
@@ -12,6 +12,9 @@ import { ConfirmDialog, Drawer, Modal, useToast } from '@/components/ui/overlay'
 import { ScoreRing, Sparkline } from '@/components/ui/charts';
 import { Pagination, TableWrap, Td, Th, THead, Tr } from '@/components/ui/table';
 import { HoursEditor, defaultHours } from '@/components/locations/HoursEditor';
+import { ImportDialog } from '@/components/locations/ImportDialog';
+import { DuplicatePanel } from '@/components/locations/DuplicatePanel';
+import { useSavedViews } from '@/lib/data/savedViews';
 import { useAuditResults, useStore } from '@/lib/data/store';
 import { can } from '@/lib/domain/permissions';
 import { fieldErrors, firstError, locationSchema, type LocationInput } from '@/lib/domain/validation';
@@ -57,6 +60,8 @@ function LocationsInner() {
   const [errors, setErrors] = React.useState<Record<string, string>>({});
   const [busy, setBusy] = React.useState(false);
   const [confirmDelete, setConfirmDelete] = React.useState<Location | null>(null);
+  const [importOpen, setImportOpen] = React.useState(false);
+  const views = useSavedViews<{ query: string; city: string; statusFilter: string; sort: string }>('outlets');
 
   // deep link: /locations?outlet=<id> without pulling in useSearchParams
   React.useEffect(() => {
@@ -237,6 +242,9 @@ function LocationsInner() {
       subtitle={`${data.locations.length} locations in ${cities.length} cities`}
       actions={
         <div className="flex items-center gap-1.5">
+          <Button size="sm" variant="secondary" onClick={() => setImportOpen(true)} icon={<Upload className="h-3.5 w-3.5" />}>
+            <span className="hidden sm:inline">Import</span>
+          </Button>
           <Button size="sm" variant="secondary" onClick={exportCsv} icon={<Download className="h-3.5 w-3.5" />}>
             <span className="hidden sm:inline">Export</span>
           </Button>
@@ -284,6 +292,45 @@ function LocationsInner() {
             </Button>
           )}
         </div>
+
+        {(views.views.length > 0 || query || city !== 'all' || statusFilter !== 'all') && (
+          <div className="flex flex-wrap items-center gap-1.5 border-b border-ink-200 px-3 py-1.5">
+            <span className="label-caps">Saved views</span>
+            {views.views.map((view) => (
+              <button
+                key={view.id}
+                onClick={() => {
+                  setQuery(view.payload.query);
+                  setCity(view.payload.city);
+                  setStatusFilter(view.payload.statusFilter);
+                  setSort(view.payload.sort as typeof sort);
+                  setPage(0);
+                }}
+                className="group flex items-center gap-1 rounded-md border border-ink-200 bg-white px-1.5 py-0.5 text-[11px] text-ink-600 hover:border-ink-300 hover:text-ink-900"
+              >
+                {view.name}
+                <X
+                  className="h-2.5 w-2.5 text-ink-300 opacity-0 transition-opacity group-hover:opacity-100"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    views.remove(view.id);
+                  }}
+                />
+              </button>
+            ))}
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                const name = window.prompt('Name this view');
+                if (name) views.save(name, { query, city, statusFilter, sort });
+              }}
+              icon={<Save className="h-3 w-3" />}
+            >
+              Save view
+            </Button>
+          </div>
+        )}
 
         {selected.length > 0 && (
           <div className="flex items-center gap-2 border-b border-ink-200 bg-pine-50/60 px-3 py-2 text-[12px]">
@@ -533,6 +580,12 @@ function LocationsInner() {
           </div>
         )}
       </Drawer>
+
+      <div className="mt-4">
+        <DuplicatePanel />
+      </div>
+
+      <ImportDialog open={importOpen} onClose={() => setImportOpen(false)} />
 
       {formModal}
 

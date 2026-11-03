@@ -5,11 +5,13 @@ import Link from 'next/link';
 import { ArrowUpRight, Building2, MessageSquareText, ShieldAlert, TrendingUp } from 'lucide-react';
 import { AppShell, PageGuard } from '@/components/shell/AppShell';
 import { Badge, Button, Card, CardHeader, EmptyState, Progress, Skeleton } from '@/components/ui/primitives';
-import { DistributionBars, ScoreRing, Sparkline, TrendChart } from '@/components/ui/charts';
+import { DiscoveryHeatmap, DistributionBars, ScoreTrend, Sparkline, TrendChart } from '@/components/ui/charts';
 import { Td, Th, THead, Tr, TableWrap } from '@/components/ui/table';
 import { useAuditResults, useStore } from '@/lib/data/store';
 import { portfolioFixRanking } from '@/lib/domain/audit';
 import { buildSeries, pctDelta, portfolioKpis, sum } from '@/lib/domain/kpis';
+import { buildHeatmap } from '@/lib/domain/heatmap';
+import { formatDuration, summariseSla } from '@/lib/domain/sla';
 import { formatCompact, formatNumber, formatPercent, formatRelative } from '@/lib/domain/format';
 import { cn } from '@/lib/utils';
 
@@ -93,6 +95,24 @@ function DashboardInner() {
     .filter((review) => review.status === 'new' || review.status === 'drafted' || review.status === 'escalated')
     .sort((a, b) => a.rating - b.rating)
     .slice(0, 4);
+
+  const heatmap = React.useMemo(() => buildHeatmap(data.metrics, 91, (snapshot) => snapshot.views), [data.metrics]);
+  const sla = React.useMemo(() => summariseSla(data.reviews), [data.reviews]);
+  const scoreTrend = React.useMemo(() => {
+    const byDate = new Map<string, { total: number; count: number }>();
+    for (const snapshot of data.auditSnapshots) {
+      const entry = byDate.get(snapshot.captured_on) ?? { total: 0, count: 0 };
+      entry.total += snapshot.score;
+      entry.count += 1;
+      byDate.set(snapshot.captured_on, entry);
+    }
+    return [...byDate.entries()]
+      .map(([captured_on, entry]) => ({ captured_on, avg_score: Math.round((entry.total / entry.count) * 10) / 10 }))
+      .sort((a, b) => a.captured_on.localeCompare(b.captured_on));
+  }, [data.auditSnapshots]);
+  const scoreDelta = scoreTrend.length > 1
+    ? scoreTrend[scoreTrend.length - 1].avg_score - scoreTrend[0].avg_score
+    : null;
 
   const bandCounts = {
     healthy: health.filter((h) => h.audit_score >= 85).length,
@@ -259,6 +279,39 @@ function DashboardInner() {
             </div>
           </div>
 
+          <div className="grid gap-4 lg:grid-cols-[1.55fr_1fr]">
+            <Card>
+              <CardHeader
+                title="Discovery rhythm"
+                description="Daily profile views, last 13 weeks"
+                action={<span className="tabular text-[11px] text-ink-400">{formatCompact(heatmap.total)} views</span>}
+              />
+              <div className="p-3">
+                <DiscoveryHeatmap weeks={heatmap.weeks} levels={heatmap.levels} />
+              </div>
+            </Card>
+
+            <Card>
+              <CardHeader title="Audit score trend" description="Portfolio average, last 30 days" />
+              <div className="px-2 pb-2 pt-3">
+                <ScoreTrend points={scoreTrend} />
+                <div className="flex items-baseline justify-between border-t border-ink-100 px-2 pt-2 text-[11px] text-ink-500">
+                  <span>
+                    Today{' '}
+                    <span className="tabular font-semibold text-ink-900">
+                      {scoreTrend.length ? scoreTrend[scoreTrend.length - 1].avg_score.toFixed(1) : '—'}
+                    </span>
+                  </span>
+                  {scoreDelta !== null && (
+                    <span className={scoreDelta >= 0 ? 'text-pine-700' : 'text-brick-600'}>
+                      {scoreDelta >= 0 ? '+' : ''}{scoreDelta.toFixed(1)} over 30 days
+                    </span>
+                  )}
+                </div>
+              </div>
+            </Card>
+          </div>
+
           <div className="grid gap-4 lg:grid-cols-2">
             <Card>
               <CardHeader
@@ -341,6 +394,12 @@ function DashboardInner() {
                   ))}
                 </ul>
               )}
+              <div className="flex items-center justify-between border-t border-ink-200 px-4 py-2 text-[11px] text-ink-500">
+                <span>Median first reply {formatDuration(sla.medianHours)}</span>
+                <span className={sla.overdue > 0 ? 'text-brick-600' : 'text-pine-700'}>
+                  {sla.overdue > 0 ? `${sla.overdue} overdue` : 'within SLA'}
+                </span>
+              </div>
             </Card>
           </div>
 

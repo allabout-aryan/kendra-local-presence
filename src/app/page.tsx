@@ -106,20 +106,25 @@ export default function LandingPage() {
                 <Button
                   size="lg"
                   variant="primary"
+                  onClick={() => router.push('/login')}
+                  icon={<ArrowRight className="h-4 w-4" />}
+                >
+                  Open the workspace
+                </Button>
+                <Button
+                  size="lg"
+                  variant="secondary"
                   onClick={() => {
                     enterDemo();
                     router.push('/dashboard');
                   }}
                   icon={<Sparkles className="h-4 w-4" />}
                 >
-                  Open the live demo
-                </Button>
-                <Button size="lg" variant="secondary" onClick={() => router.push('/login')} icon={<ArrowRight className="h-4 w-4" />}>
-                  Sign in to your brand
+                  Explore sample data
                 </Button>
               </div>
               <p className="mt-3 text-[11px] text-ink-400">
-                The demo runs on sample data for a fictional 10-outlet coffee brand. No signup needed.
+                Live workspace backed by Supabase, seeded with a fictional 10-outlet coffee brand. Sign-in details are on the login screen.
               </p>
             </div>
 
@@ -200,15 +205,8 @@ export default function LandingPage() {
                 Connect the Google account that owns your Business Profiles. Kendra reads every location, scores it,
                 and queues the fixes that matter — you approve, it writes back.
               </p>
-              <Button
-                className="mt-5"
-                variant="primary"
-                onClick={() => {
-                  enterDemo();
-                  router.push('/dashboard');
-                }}
-              >
-                Try it with sample data
+              <Button className="mt-5" variant="primary" onClick={() => router.push('/login')}>
+                Open the workspace
               </Button>
             </div>
             <ol className="space-y-3">

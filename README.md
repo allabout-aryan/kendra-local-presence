@@ -1,9 +1,5 @@
 # Kendra
 
-[![Deploy to GitHub Pages](https://github.com/allabout-aryan/kendra-local-presence/actions/workflows/deploy-pages.yml/badge.svg)](https://github.com/allabout-aryan/kendra-local-presence/actions/workflows/deploy-pages.yml) [![Live demo](https://img.shields.io/badge/live_demo-open-0E5B46)](https://allabout-aryan.github.io/kendra-local-presence/)
-
-**[Open the live demo →](https://allabout-aryan.github.io/kendra-local-presence/)**
-
 **A local presence manager for multi-location brands.** Kendra keeps every outlet of a brand accurate,
 reviewed and ranking on Google — from one screen.
 
@@ -26,11 +22,29 @@ assume a marketing team of three, not thirty.
 | **Audit** | 13 deterministic rules, 0–100 score per outlet, portfolio fix ranking by recoverable points, severity filters, CSV export |
 | **Team** | Members with four roles, seat limits enforced in the database, add/remove through security-definer RPCs |
 | **Settings** | Brand name, colour, plan; Google connection status; environment and security summary |
+| **Posts** | Write, schedule and publish Google posts per outlet, with a publishing queue and per-post status |
+| **CSV import** | Paste or upload an outlet list; columns are matched by alias, every row is validated and shown before anything is written |
+| **Duplicate listings** | Same-name outlets in a city are grouped, the stronger profile is proposed as the keeper, and a merge moves reviews and metrics across |
+| **Audit history** | Daily score snapshots per outlet, so the portfolio has a trend line instead of a single number |
+| **Review SLA** | Median first-reply time, share answered within 48 hours, and overdue flags on the queue |
+| **Saved views** | Named filter combinations on the outlets table, kept per browser |
+| **Posts** | Write, schedule and publish Google posts per outlet, with a publishing queue and per-post status |
+| **CSV import** | Paste or upload an outlet list; columns are matched by alias, every row is validated and shown before anything is written |
+| **Duplicate listings** | Same-name outlets in a city are grouped, the stronger profile is proposed as the keeper, and a merge moves reviews and metrics across |
+| **Audit history** | Daily score snapshots per outlet, so the portfolio has a trend line instead of a single number |
+| **Review SLA** | Median first-reply time, share answered within 48 hours, and overdue flags on the queue |
+| **Saved views** | Named filter combinations on the outlets table, kept per browser |
 | **Activity** | Day-grouped audit trail of every change, filterable by kind |
 
 Everything in the UI is wired to real state. There are no dead buttons, no static charts and no placeholder
 dashboards. Where a capability needs a credential you have not supplied (Google Business Profile OAuth), the UI
 says so explicitly rather than pretending.
+
+**Live demo:** https://allabout-aryan.github.io/kendra-local-presence/ — sign in with
+`aarti@bluetokai.test` / `kendra-demo-1234` (a seeded workspace, backed by a real Supabase project).
+
+**Live demo:** https://allabout-aryan.github.io/kendra-local-presence/ — sign in with
+`aarti@bluetokai.test` / `kendra-demo-1234` (a seeded workspace, backed by a real Supabase project).
 
 ### Two data modes
 
@@ -47,6 +61,8 @@ says so explicitly rather than pretending.
 - **Next.js 15** (App Router, static export) + **React 19** + **TypeScript** (strict)
 - **Tailwind CSS 3** with a hand-built design system — no component library, no CSS-in-JS runtime
 - **Supabase**: Postgres, Auth, Row Level Security, Edge Functions (Deno), pg_cron
+- Live project: `eboeegapwtouwnrogpbi` (ap-south-1), four migrations applied
+- Live project: `eboeegapwtouwnrogpbi` (ap-south-1), four migrations applied
 - **Zod** for all input validation, shared between UI and data layer
 - **Vitest** for unit tests, a **Python + psycopg** harness for schema and RLS tests, **Playwright** for E2E
 

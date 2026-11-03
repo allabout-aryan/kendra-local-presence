@@ -192,3 +192,49 @@ export interface PortfolioRollup {
   views_30d: number;
   last_synced_at: string | null;
 }
+
+export type PostStatus = 'draft' | 'scheduled' | 'published' | 'failed';
+export type ImportStatus = 'queued' | 'previewed' | 'running' | 'completed' | 'failed';
+
+export interface Post {
+  id: string;
+  org_id: string;
+  location_id: string;
+  body: string;
+  cta_type: string | null;
+  cta_url: string | null;
+  scheduled_for: string | null;
+  status: PostStatus;
+  published_at: string | null;
+  error: string | null;
+  created_at: string;
+  updated_at: string;
+  location_name?: string;
+}
+
+export interface AuditSnapshot {
+  id: string;
+  org_id: string;
+  location_id: string;
+  captured_on: string;
+  score: number;
+}
+
+export interface ImportJob {
+  id: string;
+  org_id: string;
+  filename: string | null;
+  status: ImportStatus;
+  total_rows: number;
+  imported: number;
+  failed: number;
+  errors: { row: number; field: string; message: string }[];
+  created_at: string;
+  finished_at: string | null;
+}
+
+export interface ScoreTrendPoint {
+  captured_on: string;
+  avg_score: number;
+  outlets: number;
+}

@@ -10,6 +10,8 @@ import { generateDraft } from '@/lib/data/ai';
 import { isReplySafe } from '@/lib/domain/reviews';
 import { can } from '@/lib/domain/permissions';
 import { formatRelative } from '@/lib/domain/format';
+import { formatDuration, isOverdue, summariseSla } from '@/lib/domain/sla';
+import { SLA_HOURS } from '@/lib/domain/sla';
 import { cn } from '@/lib/utils';
 import type { Review } from '@/lib/domain/types';
 
@@ -42,6 +44,7 @@ function ReviewsInner() {
   const [draftNote, setDraftNote] = React.useState<string | null>(null);
 
   const canReply = can(role, 'review:reply');
+  const sla = React.useMemo(() => summariseSla(data.reviews), [data.reviews]);
 
   const counts = React.useMemo(
     () => ({
@@ -125,6 +128,21 @@ function ReviewsInner() {
       title="Reviews"
       subtitle={`${counts.open} open · ${counts.replied} replied across ${data.locations.length} outlets`}
     >
+      <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {[
+          { label: 'Median first reply', value: formatDuration(sla.medianHours), hint: `target under ${SLA_HOURS}h` },
+          { label: 'Within SLA', value: sla.withinSlaPct === null ? '—' : `${sla.withinSlaPct.toFixed(0)}%`, hint: `${sla.withinSla} of ${sla.answered} answered` },
+          { label: 'Overdue', value: String(sla.overdue), hint: sla.overdue > 0 ? 'older than 48h, unreplied' : 'nothing breaching' },
+          { label: 'Waiting', value: String(sla.open), hint: 'in the queue right now' },
+        ].map((stat) => (
+          <Card key={stat.label} className="p-3.5">
+            <p className="label-caps">{stat.label}</p>
+            <p className="tabular mt-1.5 text-[22px] font-semibold leading-none tracking-[-0.02em] text-ink-950">{stat.value}</p>
+            <p className="mt-1.5 text-[11px] text-ink-500">{stat.hint}</p>
+          </Card>
+        ))}
+      </div>
+
       <Card>
         <div className="flex flex-wrap items-center gap-2 px-3 pt-2">
           <Tabs
@@ -179,6 +197,7 @@ function ReviewsInner() {
                       {review.sentiment === 'negative' && <Badge tone="danger">negative</Badge>}
                       {review.status === 'replied' && <Badge tone="positive">replied</Badge>}
                       {review.status === 'ignored' && <Badge tone="neutral">ignored</Badge>}
+                      {isOverdue(review) && <Badge tone="danger">overdue</Badge>}
                     </div>
                     <p className="mt-1.5 max-w-[70ch] text-[13px] leading-relaxed text-ink-700">{review.comment ?? 'No comment left.'}</p>
                     {review.reply_text && (

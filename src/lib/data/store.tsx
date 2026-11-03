@@ -3,8 +3,8 @@
 import * as React from 'react';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type {
-  ActivityEvent, BulkJob, Connection, Location, MemberRole, Membership, MetricSnapshot,
-  Organization, RankSnapshot, Review,
+  ActivityEvent, AuditSnapshot, BulkJob, Connection, ImportJob, Location, MemberRole, Membership,
+  MetricSnapshot, Organization, Post, RankSnapshot, Review,
 } from '@/lib/domain/types';
 import type { BulkEditInput, LocationInput } from '@/lib/domain/validation';
 import { applyHoursPatch } from '@/lib/domain/hours';
@@ -47,6 +47,9 @@ export interface WorkspaceData {
   activity: ActivityEvent[];
   members: Membership[];
   connection: Connection | null;
+  posts: Post[];
+  auditSnapshots: AuditSnapshot[];
+  importJobs: ImportJob[];
 }
 
 const EMPTY_DATA: WorkspaceData = {
@@ -58,6 +61,9 @@ const EMPTY_DATA: WorkspaceData = {
   activity: [],
   members: [],
   connection: null,
+  posts: [],
+  auditSnapshots: [],
+  importJobs: [],
 };
 
 interface StoreValue {
@@ -86,6 +92,20 @@ interface StoreValue {
   removeMember: (userId: string) => Promise<void>;
   updateOrg: (patch: Partial<Pick<Organization, 'name' | 'brand_color' | 'plan'>>) => Promise<void>;
   syncNow: (locationIds?: string[]) => Promise<void>;
+  importOutlets: (rows: LocationInput[], filename: string) => Promise<{ imported: number; failed: number }>;
+  mergeOutlets: (keeperId: string, mergeIds: string[]) => Promise<void>;
+  savePost: (input: PostDraft, id?: string) => Promise<void>;
+  publishPost: (id: string) => Promise<void>;
+  deletePost: (id: string) => Promise<void>;
+  syncAuditSnapshots: (rows: { location_id: string; score: number; findings: number }[]) => Promise<void>;
+}
+
+export interface PostDraft {
+  location_id: string;
+  body: string;
+  cta_type: string;
+  cta_url?: string;
+  scheduled_for?: string | null;
 }
 
 const StoreContext = React.createContext<StoreValue | null>(null);
@@ -123,6 +143,9 @@ function demoToData(dataset: DemoDataset): WorkspaceData {
     activity: dataset.activity,
     members: dataset.members,
     connection: dataset.connection,
+    posts: dataset.posts ?? [],
+    auditSnapshots: dataset.auditSnapshots ?? [],
+    importJobs: dataset.importJobs ?? [],
   };
 }
 
@@ -147,7 +170,10 @@ export function KendraProvider({ children }: { children: React.ReactNode }) {
     since.setDate(since.getDate() - 30);
     const sinceIso = since.toISOString().slice(0, 10);
 
-    const [locations, reviews, metrics, ranks, jobs, activity, members, connection] = await Promise.all([
+    const sinceAudit = new Date();
+    sinceAudit.setDate(sinceAudit.getDate() - 90);
+
+    const [locations, reviews, metrics, ranks, jobs, activity, members, connection, posts, auditSnapshots, importJobs] = await Promise.all([
       supabase.from('locations').select('*').eq('org_id', orgId).order('name'),
       supabase.from('v_review_queue').select('*').eq('org_id', orgId).order('published_at', { ascending: false }).limit(400),
       supabase.from('metric_snapshots').select('*').eq('org_id', orgId).gte('captured_on', sinceIso),
@@ -156,9 +182,13 @@ export function KendraProvider({ children }: { children: React.ReactNode }) {
       supabase.from('activity_events').select('*').eq('org_id', orgId).order('created_at', { ascending: false }).limit(60),
       supabase.from('memberships').select('org_id, user_id, role, created_at').eq('org_id', orgId),
       supabase.from('connections').select('*').eq('org_id', orgId).maybeSingle(),
+      supabase.from('posts').select('*').eq('org_id', orgId).order('created_at', { ascending: false }).limit(100),
+      supabase.from('audit_snapshots').select('*').eq('org_id', orgId).gte('captured_on', sinceAudit.toISOString().slice(0, 10)),
+      supabase.from('import_jobs').select('*').eq('org_id', orgId).order('created_at', { ascending: false }).limit(20),
     ]);
 
-    const firstError = [locations, reviews, metrics, ranks, jobs, activity, members].find((r) => r.error)?.error;
+    const firstError = [locations, reviews, metrics, ranks, jobs, activity, members, posts, auditSnapshots, importJobs]
+      .find((r) => r.error)?.error;
     if (firstError) throw new Error(firstError.message);
 
     const memberRows = (members.error ? [] : members.data ?? []) as Membership[];
@@ -187,6 +217,9 @@ export function KendraProvider({ children }: { children: React.ReactNode }) {
       activity: (activity.data ?? []) as ActivityEvent[],
       members: membersWithProfiles,
       connection: (connection.data as Connection | null) ?? null,
+      posts: (posts.data ?? []) as Post[],
+      auditSnapshots: (auditSnapshots.data ?? []) as AuditSnapshot[],
+      importJobs: (importJobs.data ?? []) as ImportJob[],
     } satisfies WorkspaceData;
   }, []);
 
@@ -789,6 +822,277 @@ export function KendraProvider({ children }: { children: React.ReactNode }) {
     [data.locations, mode, mutateDemo, org, user, refresh],
   );
 
+  const importOutlets = React.useCallback(
+    async (rows: LocationInput[], filename: string) => {
+      const now = new Date().toISOString();
+      const payload = rows.map((row) => ({
+        name: row.name,
+        store_code: row.store_code || null,
+        city: row.city || null,
+        state: row.state || null,
+        postal_code: row.postal_code || null,
+        address_line1: row.address_line1 || null,
+        phone: row.phone || null,
+        website: row.website || null,
+        primary_category: row.primary_category || null,
+        description: row.description || null,
+        status: row.status,
+        last_synced_at: now,
+      }));
+
+      if (mode === 'demo') {
+        mutateDemo((dataset) => {
+          const created: Location[] = payload.map((row, index) => ({
+            id: `import-${Date.now()}-${index}`,
+            org_id: dataset.org.id,
+            gbp_account_id: null,
+            gbp_location_id: null,
+            country: 'IN',
+            additional_categories: [],
+            attributes: {},
+            hours: {},
+            photo_count: 0,
+            last_photo_at: null,
+            audit_score: 0,
+            created_at: now,
+            updated_at: now,
+            ...row,
+          })) as Location[];
+          return {
+            ...dataset,
+            locations: [...dataset.locations, ...created],
+            importJobs: [
+              {
+                id: `import-job-${Date.now()}`,
+                org_id: dataset.org.id,
+                filename,
+                status: 'completed',
+                total_rows: rows.length,
+                imported: created.length,
+                failed: 0,
+                errors: [],
+                created_at: now,
+                finished_at: now,
+              },
+              ...dataset.importJobs,
+            ],
+          };
+        });
+        return { imported: rows.length, failed: 0 };
+      }
+
+      if (!supabase || !org) throw new Error('Supabase is not configured');
+      const { error: insertError } = await supabase.from('locations').insert(
+        payload.map((row) => ({ ...row, org_id: org.id })),
+      );
+      const failed = insertError ? rows.length : 0;
+      await supabase.from('import_jobs').insert({
+        org_id: org.id,
+        filename,
+        status: insertError ? 'failed' : 'completed',
+        total_rows: rows.length,
+        imported: rows.length - failed,
+        failed,
+        errors: insertError ? [{ row: 0, field: 'database', message: insertError.message }] : [],
+        created_by: user?.id ?? null,
+        finished_at: now,
+      });
+      if (insertError) throw new Error(insertError.message);
+      await supabase.from('activity_events').insert({
+        org_id: org.id,
+        kind: 'locations.imported',
+        summary: `Imported ${rows.length} outlets from ${filename}`,
+        actor_id: user?.id ?? null,
+      });
+      await refresh();
+      return { imported: rows.length, failed };
+    },
+    [mode, mutateDemo, org, user, refresh],
+  );
+
+  const mergeOutlets = React.useCallback(
+    async (keeperId: string, mergeIds: string[]) => {
+      const now = new Date().toISOString();
+      if (mode === 'demo') {
+        mutateDemo((dataset) => ({
+          ...dataset,
+          reviews: dataset.reviews.map((review) =>
+            mergeIds.includes(review.location_id) ? { ...review, location_id: keeperId } : review,
+          ),
+          metrics: dataset.metrics.map((snapshot) =>
+            mergeIds.includes(snapshot.location_id) ? { ...snapshot, location_id: keeperId } : snapshot,
+          ),
+          ranks: dataset.ranks.filter((rank) => !mergeIds.includes(rank.location_id)),
+          posts: dataset.posts.filter((post) => !mergeIds.includes(post.location_id)),
+          locations: dataset.locations.filter((location) => !mergeIds.includes(location.id)),
+          activity: [
+            {
+              id: `merge-${Date.now()}`,
+              org_id: dataset.org.id,
+              location_id: keeperId,
+              actor_id: null,
+              kind: 'location.merged',
+              summary: `Merged ${mergeIds.length} duplicate listing(s) into one outlet`,
+              meta: { mergeIds },
+              created_at: now,
+            },
+            ...dataset.activity,
+          ],
+        }));
+        return;
+      }
+
+      if (!supabase || !org) throw new Error('Supabase is not configured');
+      for (const id of mergeIds) {
+        await supabase.from('reviews').update({ location_id: keeperId }).eq('location_id', id);
+        await supabase.from('metric_snapshots').update({ location_id: keeperId }).eq('location_id', id);
+        await supabase.from('rank_snapshots').delete().eq('location_id', id);
+        await supabase.from('posts').delete().eq('location_id', id);
+        await supabase.from('locations').delete().eq('id', id);
+      }
+      await supabase.from('activity_events').insert({
+        org_id: org.id,
+        location_id: keeperId,
+        kind: 'location.merged',
+        summary: `Merged ${mergeIds.length} duplicate listing(s) into one outlet`,
+        actor_id: user?.id ?? null,
+        meta: { mergeIds },
+      });
+      await refresh();
+    },
+    [mode, mutateDemo, org, user, refresh],
+  );
+
+  const savePost = React.useCallback(
+    async (input: PostDraft, id?: string) => {
+      const now = new Date().toISOString();
+      const status: Post['status'] = input.scheduled_for ? 'scheduled' : 'draft';
+      const row = {
+        location_id: input.location_id,
+        body: input.body,
+        cta_type: input.cta_type,
+        cta_url: input.cta_url || null,
+        scheduled_for: input.scheduled_for || null,
+        status,
+      };
+
+      if (mode === 'demo') {
+        mutateDemo((dataset) => {
+          if (id) {
+            return {
+              ...dataset,
+              posts: dataset.posts.map((post) => (post.id === id ? { ...post, ...row, updated_at: now } : post)),
+            };
+          }
+          const created: Post = {
+            id: `post-${Date.now()}`,
+            org_id: dataset.org.id,
+            published_at: null,
+            error: null,
+            created_at: now,
+            updated_at: now,
+            location_name: dataset.locations.find((location) => location.id === input.location_id)?.name,
+            ...row,
+          } as Post;
+          return { ...dataset, posts: [created, ...dataset.posts] };
+        });
+        return;
+      }
+
+      if (!supabase || !org) throw new Error('Supabase is not configured');
+      const query = id
+        ? supabase.from('posts').update(row).eq('id', id)
+        : supabase.from('posts').insert({ ...row, org_id: org.id, created_by: user?.id ?? null });
+      const { error: writeError } = await query;
+      if (writeError) throw new Error(writeError.message);
+      await refresh();
+    },
+    [mode, mutateDemo, org, user, refresh],
+  );
+
+  const publishPost = React.useCallback(
+    async (id: string) => {
+      const now = new Date().toISOString();
+      if (mode === 'demo') {
+        mutateDemo((dataset) => ({
+          ...dataset,
+          posts: dataset.posts.map((post) =>
+            post.id === id ? { ...post, status: 'published', published_at: now, updated_at: now } : post,
+          ),
+          activity: [
+            {
+              id: `post-${Date.now()}`,
+              org_id: dataset.org.id,
+              location_id: dataset.posts.find((post) => post.id === id)?.location_id ?? null,
+              actor_id: null,
+              kind: 'post.published',
+              summary: 'Published a Google post',
+              meta: {},
+              created_at: now,
+            },
+            ...dataset.activity,
+          ],
+        }));
+        return;
+      }
+      if (!supabase) throw new Error('Supabase is not configured');
+      const { error: updateError } = await supabase
+        .from('posts')
+        .update({ status: 'published', published_at: now })
+        .eq('id', id);
+      if (updateError) throw new Error(updateError.message);
+      await refresh();
+    },
+    [mode, mutateDemo, refresh],
+  );
+
+  const deletePost = React.useCallback(
+    async (id: string) => {
+      if (mode === 'demo') {
+        mutateDemo((dataset) => ({ ...dataset, posts: dataset.posts.filter((post) => post.id !== id) }));
+        return;
+      }
+      if (!supabase) throw new Error('Supabase is not configured');
+      const { error: deleteError } = await supabase.from('posts').delete().eq('id', id);
+      if (deleteError) throw new Error(deleteError.message);
+      await refresh();
+    },
+    [mode, mutateDemo, refresh],
+  );
+
+  /**
+   * Persists today's audit score per outlet so the portfolio has a real trend
+   * instead of a single number, and keeps locations.audit_score fresh for
+   * anything reading the database directly.
+   */
+  const syncAuditSnapshots = React.useCallback(
+    async (rows: { location_id: string; score: number; findings: number }[]) => {
+      if (mode !== 'supabase' || !supabase || !org || rows.length === 0) return;
+      const today = new Date().toISOString().slice(0, 10);
+      const changed = rows.filter((row) => {
+        const location = data.locations.find((candidate) => candidate.id === row.location_id);
+        return location && location.audit_score !== row.score;
+      });
+
+      const { error: snapshotError } = await supabase.from('audit_snapshots').upsert(
+        rows.map((row) => ({
+          org_id: org.id,
+          location_id: row.location_id,
+          captured_on: today,
+          score: row.score,
+          findings: [],
+        })),
+        { onConflict: 'location_id,captured_on' },
+      );
+      if (snapshotError) return;
+
+      await Promise.all(
+        changed.map((row) => supabase.from('locations').update({ audit_score: row.score }).eq('id', row.location_id)),
+      );
+    },
+    [mode, org, data.locations],
+  );
+
   const value: StoreValue = {
     status,
     mode,
@@ -815,6 +1119,12 @@ export function KendraProvider({ children }: { children: React.ReactNode }) {
     removeMember,
     updateOrg,
     syncNow,
+    importOutlets,
+    mergeOutlets,
+    savePost,
+    publishPost,
+    deletePost,
+    syncAuditSnapshots,
   };
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
